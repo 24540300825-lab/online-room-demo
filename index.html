@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Online Room — Realtime Demo</title>
+<style>
+:root{color-scheme:dark;--bg:#0b0d12;--panel:#131722;--line:#272d3a;--muted:#98a2b3;--text:#f4f6fb;--green:#49d49d;--red:#ff7070}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at top,#192235 0%,var(--bg) 58%);font:15px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;color:var(--text);display:grid;place-items:center;padding:24px}
+main{width:min(720px,100%)}.eyebrow{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:#9ba9c2;font-weight:700}.head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0 24px}.title{font-size:clamp(30px,5vw,46px);line-height:1.05;letter-spacing:-.04em;margin:0}.pill{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:#111620;padding:8px 12px;border-radius:999px;color:var(--muted);font-size:12px;white-space:nowrap}.dot{width:8px;height:8px;border-radius:50%;background:#697386}.dot.ok{background:var(--green);box-shadow:0 0 14px #49d49d66}.card{background:linear-gradient(180deg,#171c29ee,#11151eee);border:1px solid var(--line);border-radius:20px;padding:22px;box-shadow:0 24px 80px #0005}.row{display:flex;align-items:center;justify-content:space-between;gap:12px}.label{font-weight:650;font-size:17px}.sub{color:var(--muted);font-size:13px;margin-top:3px}.count{font-size:34px;font-weight:750;letter-spacing:-.04em}.people{display:grid;gap:10px;margin-top:18px}.person{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid #252c3a;border-radius:13px;background:#0d1119}.avatar{height:38px;width:38px;border-radius:12px;background:#27364d;display:grid;place-items:center;font-weight:800}.person .meta{flex:1}.person strong{display:block;font-size:14px}.person small{color:var(--muted)}.status{font-size:12px;color:var(--green)}.form{display:flex;gap:10px;margin-top:20px}.form input{min-width:0;flex:1;background:#0b0f17;color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font:inherit;outline:none}.form input:focus{border-color:#7486ac}.form button{border:0;border-radius:12px;background:#e9eefc;color:#111827;padding:0 17px;font-weight:750;cursor:pointer}.note{margin:18px 2px 0;color:var(--muted);font-size:12px}.notice{display:none;margin-top:14px;padding:12px;border-radius:12px;background:#302516;color:#ffd28a;font-size:13px}.notice.show{display:block}.footer{display:flex;justify-content:space-between;gap:12px;margin-top:18px;color:#6f7a8f;font-size:11px}
+@media(max-width:520px){body{padding:15px}.card{padding:17px}.head{align-items:flex-start;flex-direction:column}.form{flex-direction:column}.form button{padding:12px}}
+</style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">Realtime connection test</div>
+  <div class="head"><h1 class="title">Online Room<span style="color:var(--green)">.</span></h1><div class="pill"><span id="connectionDot" class="dot"></span><span id="connectionText">Chưa kết nối</span></div></div>
+  <section class="card">
+    <div class="row"><div><div class="label">Phòng dùng chung</div><div class="sub">Mọi người mở cùng URL sẽ thấy nhau khi online.</div></div><div class="count" id="count">—</div></div>
+    <div class="people" id="people"><div class="person"><div class="avatar">?</div><div class="meta"><strong>Đang chờ kết nối</strong><small>Cấu hình Supabase để bật realtime.</small></div></div></div>
+    <form class="form" id="nameForm"><input id="displayName" maxlength="32" placeholder="Tên hiển thị của bạn" aria-label="Tên hiển thị"><button type="submit">Cập nhật tên</button></form>
+    <div id="notice" class="notice"></div>
+  </section>
+  <p class="note">Demo chỉ kiểm tra trạng thái online theo thời gian thực. Chưa lưu task hay dữ liệu công việc.</p>
+  <div class="footer"><span>ONLINE ROOM / DEMO 01</span><span>Shared presence · No server to maintain</span></div>
+</main>
+<script type="module">
+/*
+  1) Create a Supabase project.
+  2) Paste Project URL and anon/publishable key below.
+  3) Host this folder on Vercel / Netlify.
+  Never put a service_role/secret key in browser code.
+*/
+const SUPABASE_URL = "https://lqbquvwsytdctljvmmss.supabase.co/rest/v1/";
+const SUPABASE_ANON_KEY = "sb_publishable_397LkFB_tlb2G2n7XCOdjA_1xZ4mkQ7";
+const ROOM_NAME = "shared-workspace-demo";
+const $ = (id) => document.getElementById(id);
+const notice = (message) => { $("notice").textContent = message; $("notice").classList.add("show"); };
+let client, channel;
+let name = localStorage.getItem("online-room-name") || "Khách";
+$("displayName").value = name;
+$("nameForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  name = $("displayName").value.trim().slice(0,32) || "Khách";
+  localStorage.setItem("online-room-name", name);
+  if (channel) channel.track({ name, online_at: new Date().toISOString() });
+});
+function renderUsers(state) {
+  const users = Object.values(state).flat().filter(Boolean);
+  $("count").textContent = users.length;
+  $("people").innerHTML = "";
+  if (!users.length) {
+    $("people").innerHTML = '<div class="person"><div class="avatar">…</div><div class="meta"><strong>Chưa có ai online</strong><small>Mở link ở một thiết bị khác để thử.</small></div></div>';
+    return;
+  }
+  users.forEach((user, index) => {
+    const row = document.createElement("div"); row.className = "person";
+    const avatar = document.createElement("div"); avatar.className = "avatar"; avatar.textContent = (user.name || "K").slice(0,1).toUpperCase();
+    const meta = document.createElement("div"); meta.className = "meta";
+    const strong = document.createElement("strong"); strong.textContent = user.name || "Khách";
+    const small = document.createElement("small"); small.textContent = "Đã kết nối phòng chung";
+    meta.append(strong, small);
+    const status = document.createElement("div"); status.className = "status"; status.textContent = "● Online";
+    row.append(avatar, meta, status); $("people").append(row);
+  });
+}
+async function start() {
+  if (!SUPABASE_URL.startsWith("https://") || SUPABASE_ANON_KEY.startsWith("PASTE_")) {
+    notice("Chưa bật kết nối online: hãy thêm Project URL và publishable/anon key của Supabase vào index.html, rồi publish website.");
+    return;
+  }
+  try {
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+    client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    channel = client.channel(ROOM_NAME, { config: { presence: { key: crypto.randomUUID() } } });
+    channel.on("presence", { event: "sync" }, () => renderUsers(channel.presenceState()));
+    channel.subscribe(async (status) => {
+      if (status === "SUBSCRIBED") {
+        $("connectionDot").classList.add("ok");
+        $("connectionText").textContent = "Đang kết nối realtime";
+        $("notice").classList.remove("show");
+        await channel.track({ name, online_at: new Date().toISOString() });
+      } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        $("connectionDot").classList.remove("ok");
+        $("connectionText").textContent = "Lỗi kết nối";
+        notice("Không thể kết nối realtime. Kiểm tra URL/key Supabase và kết nối mạng.");
+      }
+    });
+    window.addEventListener("beforeunload", () => { if (channel) client.removeChannel(channel); });
+  } catch (err) {
+    $("connectionText").textContent = "Lỗi khởi tạo";
+    notice("Không khởi tạo được realtime. Kiểm tra cấu hình Supabase. Chi tiết: " + (err?.message || "unknown error"));
+  }
+}
+start();
+</script>
+</body>
+</html>
