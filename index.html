@@ -65,6 +65,65 @@ function renderUsers(state) {
     row.append(avatar, meta, status); $("people").append(row);
   });
 }
+// Diagnostic button: copy safe troubleshooting details without exposing the Supabase key.
+const copyButton = $("copyDiagnostics");
+copyButton.addEventListener("click", async () => {
+  const report = [
+    "Online Room diagnostic report",
+    "Page: " + location.href,
+    "Supabase URL configured: " + (SUPABASE_URL.startsWith("https://") ? "yes" : "no"),
+    "Publishable key present: " + (Boolean(SUPABASE_ANON_KEY) ? "yes" : "no"),
+    "Connection status: " + ($("connectionText").textContent || "unknown"),
+    "Visible message: " + ($("notice").textContent || "none"),
+    "Browser: " + navigator.userAgent
+  ].join("\n");
+
+  copyButton.disabled = true;
+  copyButton.textContent = "Đang sao chép…";
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(report);
+      copyButton.textContent = "Đã sao chép — quay lại chat và Ctrl+V";
+    } else {
+      const area = document.createElement("textarea");
+      area.value = report;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.left = "-9999px";
+      document.body.appendChild(area);
+      area.select();
+      const copied = document.execCommand("copy");
+      area.remove();
+      if (copied) {
+        copyButton.textContent = "Đã sao chép — quay lại chat và Ctrl+V";
+      } else {
+        showDiagnosticReport(report);
+      }
+    }
+  } catch (error) {
+    console.warn("[Online Room] Clipboard unavailable:", error);
+    showDiagnosticReport(report);
+  } finally {
+    copyButton.disabled = false;
+  }
+});
+
+function showDiagnosticReport(report) {
+  let output = $("diagnosticReport");
+  if (!output) {
+    output = document.createElement("textarea");
+    output.id = "diagnosticReport";
+    output.readOnly = true;
+    output.rows = 8;
+    output.style.cssText = "display:block;width:100%;margin-top:10px;padding:10px;border:1px solid #303849;border-radius:10px;background:#0b0f17;color:#f4f6fb;font:12px/1.5 monospace;";
+    copyButton.insertAdjacentElement("afterend", output);
+  }
+  output.value = report;
+  output.focus();
+  output.select();
+  copyButton.textContent = "Không tự sao chép được — đã hiện nội dung bên dưới";
+}
+
 async function start() {
   if (!SUPABASE_URL.startsWith("https://") || !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.startsWith("PASTE_")) {
     $("connectionText").textContent = "Chưa cấu hình";
