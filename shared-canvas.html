@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shared Canvas — Online Drawing</title>
+<style>
+:root{color-scheme:dark;--bg:#0b0d12;--panel:#141925;--line:#2a3242;--text:#f4f6fb;--muted:#9ba7ba;--green:#4bd5a1;--accent:#dce7ff}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(ellipse at top,#192235 0%,var(--bg) 60%);color:var(--text);font:14px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;min-height:100vh}
+.app{width:min(1440px,100%);margin:auto;padding:22px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px;flex-wrap:wrap}
+.eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#9ba9c2;font-weight:800}
+h1{font-size:clamp(28px,4vw,42px);letter-spacing:-.045em;line-height:1.1;margin:5px 0 0}
+h1 span{color:var(--green)}
+.status{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:#111620;border-radius:999px;padding:9px 13px;color:var(--muted);font-size:12px}
+.dot{height:8px;width:8px;border-radius:50%;background:#697386}.dot.ok{background:var(--green);box-shadow:0 0 12px #4bd5a166}
+.shell{background:linear-gradient(180deg,#171c29ee,#11151eee);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 24px 80px #0004}
+.toolbar{display:flex;align-items:center;gap:12px;padding:12px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.group{display:flex;align-items:center;gap:7px;padding-right:12px;border-right:1px solid var(--line)}
+.group:last-of-type{border-right:0}
+.toolbtn{height:36px;min-width:38px;padding:0 11px;border:1px solid #343d4f;border-radius:9px;background:#111722;color:var(--text);cursor:pointer;font:inherit}
+.toolbtn:hover{border-color:#7183a5}.toolbtn.active{background:#dce7ff;color:#111827;border-color:#dce7ff;font-weight:800}
+.swatch{width:27px;height:27px;border:2px solid #606b7e;border-radius:50%;cursor:pointer;padding:0;background:var(--c)}
+.swatch.active{outline:2px solid #dce7ff;outline-offset:2px;border-color:#fff}
+input[type=range]{width:105px;accent-color:#dce7ff}
+.toolbar label{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.spacer{flex:1}
+.danger{border-color:#63404a;color:#ffb4bc}
+.board-wrap{padding:14px;background:#0c1018}
+.canvas-frame{width:100%;height:min(68vh,760px);min-height:360px;background:#fff;border-radius:10px;overflow:hidden;position:relative;touch-action:none}
+canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+.hint{position:absolute;left:12px;bottom:10px;color:#6c7685;background:#ffffffd9;border-radius:7px;padding:5px 8px;font-size:11px;pointer-events:none}
+.bottom{display:flex;justify-content:space-between;gap:12px;padding:11px 15px;color:var(--muted);font-size:12px;flex-wrap:wrap}
+.message{display:none;margin:12px 0 0;padding:10px 12px;border-radius:10px;background:#332718;color:#ffd38b;white-space:pre-wrap;overflow-wrap:anywhere}
+.message.show{display:block}
+@media(max-width:600px){.app{padding:12px}.canvas-frame{height:62vh;min-height:320px}.group{border-right:0;padding-right:2px}.toolbar{gap:9px}.spacer{display:none}.bottom{font-size:11px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div><div class="eyebrow">Realtime collaboration test</div><h1>Shared Canvas<span>.</span></h1></div>
+    <div class="status"><span id="dot" class="dot"></span><span id="connection">Đang kết nối…</span><span>·</span><span id="peopleCount">0 online</span></div>
+  </header>
+  <section class="shell">
+    <div class="toolbar">
+      <div class="group" aria-label="Tools">
+        <button class="toolbtn active" id="penBtn" type="button" title="Bút">✎ Bút</button>
+        <button class="toolbtn" id="eraserBtn" type="button" title="Tẩy">⌫ Tẩy</button>
+      </div>
+      <div class="group" aria-label="Colors">
+        <button class="swatch active" type="button" data-color="#172033" style="--c:#172033" aria-label="Đen"></button>
+        <button class="swatch" type="button" data-color="#ef4444" style="--c:#ef4444" aria-label="Đỏ"></button>
+        <button class="swatch" type="button" data-color="#f59e0b" style="--c:#f59e0b" aria-label="Cam"></button>
+        <button class="swatch" type="button" data-color="#22c55e" style="--c:#22c55e" aria-label="Xanh lá"></button>
+        <button class="swatch" type="button" data-color="#3b82f6" style="--c:#3b82f6" aria-label="Xanh dương"></button>
+        <button class="swatch" type="button" data-color="#a855f7" style="--c:#a855f7" aria-label="Tím"></button>
+      </div>
+      <div class="group"><label for="size">Nét <input id="size" type="range" min="2" max="24" value="5"><span id="sizeLabel">5 px</span></label></div>
+      <div class="spacer"></div>
+      <div class="group">
+        <button class="toolbtn" id="undoBtn" type="button">↶ Hoàn tác</button>
+        <button class="toolbtn danger" id="clearBtn" type="button">Xóa bảng</button>
+      </div>
+    </div>
+    <div class="board-wrap">
+      <div class="canvas-frame" id="canvasFrame">
+        <canvas id="board" aria-label="Bảng vẽ chung"></canvas>
+        <div class="hint">Vẽ trực tiếp · Người khác thấy nét vẽ gần như tức thì</div>
+      </div>
+      <div id="message" class="message"></div>
+    </div>
+    <div class="bottom"><span id="boardInfo">Bảng vẽ chung · chưa lưu vĩnh viễn</span><span>Shared Canvas / Test 01</span></div>
+  </section>
+  <p style="color:var(--muted);font-size:12px;margin:12px 3px">Mẹo: mở link này trên hai máy hoặc hai trình duyệt khác nhau. Đây là bản thử nghiệm realtime; bảng vẽ chưa được lưu bền vững vào database.</p>
+</div>
+<script type="module">
+const SUPABASE_URL = "https://lqbquvwsytdctljvmmss.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_397LkFB_tlb2G2n7XCOdjA_1xZ4mkQ7";
+const ROOM = "shared-drawing-board-v1";
+const $ = id => document.getElementById(id);
+const canvas = $("board");
+const ctx = canvas.getContext("2d", { alpha: false });
+const frame = $("canvasFrame");
+const message = $("message");
+const state = {
+  client:null, channel:null, connected:false, drawing:false, current:null,
+  color:"#172033", size:5, tool:"pen", strokes:[], undoStack:[], peers:new Set(),
+  lastSnapshotAt:0, snapshotTimer:null, resizeObserver:null
+};
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+function showMessage(text){message.textContent=text;message.classList.add("show")}
+function hideMessage(){message.textContent="";message.classList.remove("show")}
+function setConnection(text, ok=false){
+  $("connection").textContent=text;
+  $("dot").classList.toggle("ok",ok);
+}
+function resizeCanvas(){
+  const rect=frame.getBoundingClientRect();
+  const dpr=Math.max(1,Math.min(window.devicePixelRatio||1,2));
+  const w=Math.max(1,Math.round(rect.width*dpr)), h=Math.max(1,Math.round(rect.height*dpr));
+  if(canvas.width===w && canvas.height===h)return;
+  canvas.width=w; canvas.height=h;
+  redraw();
+}
+function redraw(){
+  const w=canvas.width,h=canvas.height;
+  ctx.save();ctx.fillStyle="#ffffff";ctx.fillRect(0,0,w,h);ctx.restore();
+  for(const stroke of state.strokes) drawStroke(stroke);
+  if(state.current) drawStroke(state.current);
+}
+function drawStroke(stroke){
+  if(!stroke || !stroke.points || !stroke.points.length)return;
+  const w=canvas.width,h=canvas.height;
+  ctx.save();
+  ctx.lineCap="round";ctx.lineJoin="round";
+  ctx.strokeStyle=stroke.tool==="eraser"?"#ffffff":stroke.color;
+  ctx.fillStyle=ctx.strokeStyle;
+  ctx.lineWidth=stroke.size*(Math.min(w,h)/900);
+  const pts=stroke.points;
+  if(pts.length===1){
+    ctx.beginPath();ctx.arc(pts[0].x*w,pts[0].y*h,ctx.lineWidth/2,0,Math.PI*2);ctx.fill();
+  }else{
+    ctx.beginPath();ctx.moveTo(pts[0].x*w,pts[0].y*h);
+    for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i].x*w,pts[i].y*h);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+function normalizedPoint(event){
+  const r=canvas.getBoundingClientRect();
+  return {x:Math.max(0,Math.min(1,(event.clientX-r.left)/r.width)),y:Math.max(0,Math.min(1,(event.clientY-r.top)/r.height))};
+}
+function addPoint(stroke,p){
+  stroke.points.push(p);
+  // redraw only the active stroke for a responsive feel
+  redraw();
+}
+function broadcast(event,payload){
+  if(!state.channel||!state.connected)return;
+  state.channel.send({type:"broadcast",event,payload}).catch(err=>console.warn("Broadcast failed",err));
+}
+function pointerDown(e){
+  if(!state.connected){showMessage("Chưa kết nối realtime; đợi trạng thái Đã kết nối rồi vẽ nhé.");return;}
+  e.preventDefault();canvas.setPointerCapture?.(e.pointerId);
+  state.drawing=true;
+  const point=normalizedPoint(e);
+  state.current={id:uid(),owner:state.clientId,color:state.color,size:state.size,tool:state.tool,points:[point]};
+  drawStroke(state.current);
+  broadcast("stroke-start",{stroke:{...state.current,points:[point]}});
+}
+function pointerMove(e){
+  if(!state.drawing||!state.current)return;
+  e.preventDefault();
+  const p=normalizedPoint(e);
+  const pts=state.current.points, prev=pts[pts.length-1];
+  if(Math.hypot(p.x-prev.x,p.y-prev.y)<0.001)return;
+  pts.push(p);
+  drawStrokeSegment(prev,p,state.current);
+  broadcast("stroke-points",{id:state.current.id,owner:state.clientId,points:[p]});
+}
+function drawStrokeSegment(a,b,stroke){
+  const w=canvas.width,h=canvas.height;
+  ctx.save();ctx.lineCap="round";ctx.lineJoin="round";
+  ctx.strokeStyle=stroke.tool==="eraser"?"#ffffff":stroke.color;
+  ctx.lineWidth=stroke.size*(Math.min(w,h)/900);
+  ctx.beginPath();ctx.moveTo(a.x*w,a.y*h);ctx.lineTo(b.x*w,b.y*h);ctx.stroke();ctx.restore();
+}
+function pointerUp(){
+  if(!state.drawing||!state.current)return;
+  state.drawing=false;
+  const finished=state.current;
+  state.strokes.push(finished);
+  state.undoStack.push(finished.id);
+  broadcast("stroke-end",{id:finished.id,owner:state.clientId});
+  state.current=null;
+  redraw();
+}
+function handleRemoteStart(payload){
+  const stroke=payload?.stroke;if(!stroke?.id)return;
+  if(state.strokes.some(s=>s.id===stroke.id)||state.remoteActive?.[stroke.id])return;
+  if(!state.remoteActive)state.remoteActive={};
+  state.remoteActive[stroke.id]={...stroke,points:[...(stroke.points||[])]};
+  drawStroke(state.remoteActive[stroke.id]);
+}
+function handleRemotePoints(payload){
+  const active=state.remoteActive?.[payload?.id];
+  if(!active||!Array.isArray(payload.points))return;
+  for(const p of payload.points){
+    const prev=active.points[active.points.length-1];
+    active.points.push(p);
+    if(prev)drawStrokeSegment(prev,p,active);else drawStroke(active);
+  }
+}
+function handleRemoteEnd(payload){
+  const active=state.remoteActive?.[payload?.id];if(!active)return;
+  state.strokes.push(active);state.remoteActive[payload.id]=null;redraw();
+}
+function sendSnapshot(){
+  if(!state.connected)return;
+  // Snapshot is sent as one broadcast for this deliberately small test app.
+  broadcast("board-snapshot",{from:state.clientId,strokes:state.strokes.slice(-250)});
+}
+function mergeSnapshot(payload){
+  if(!payload||payload.from===state.clientId||!Array.isArray(payload.strokes))return;
+  const ids=new Set(state.strokes.map(s=>s.id));
+  let changed=false;
+  for(const stroke of payload.strokes){
+    if(stroke?.id&&!ids.has(stroke.id)){state.strokes.push(stroke);ids.add(stroke.id);changed=true;}
+  }
+  if(changed)redraw();
+}
+function setPeopleCount(){
+  const count=state.peers.size||1;
+  $("peopleCount").textContent=`${count} online`;
+}
+function setTool(tool){
+  state.tool=tool;
+  $("penBtn").classList.toggle("active",tool==="pen");
+  $("eraserBtn").classList.toggle("active",tool==="eraser");
+  canvas.style.cursor=tool==="eraser"?"cell":"crosshair";
+}
+function setColor(color){
+  state.color=color;
+  document.querySelectorAll(".swatch").forEach(b=>b.classList.toggle("active",b.dataset.color===color));
+  if(state.tool==="eraser")setTool("pen");
+}
+$("penBtn").addEventListener("click",()=>setTool("pen"));
+$("eraserBtn").addEventListener("click",()=>setTool("eraser"));
+document.querySelectorAll(".swatch").forEach(b=>b.addEventListener("click",()=>setColor(b.dataset.color)));
+$("size").addEventListener("input",e=>{state.size=Number(e.target.value);$("sizeLabel").textContent=state.size+" px";});
+$("undoBtn").addEventListener("click",()=>{
+  const id=state.undoStack.pop();
+  if(!id){showMessage("Chưa có nét vẽ của phiên này để hoàn tác.");return;}
+  const idx=state.strokes.findIndex(s=>s.id===id&&s.owner===state.clientId);
+  if(idx>=0){state.strokes.splice(idx,1);broadcast("stroke-remove",{id,owner:state.clientId});redraw();}
+});
+$("clearBtn").addEventListener("click",()=>{
+  if(!confirm("Xóa toàn bộ bảng vẽ cho tất cả mọi người?"))return;
+  state.strokes=[];state.remoteActive={};state.undoStack=[];redraw();broadcast("board-clear",{by:state.clientId});
+});
+canvas.addEventListener("pointerdown",pointerDown);
+canvas.addEventListener("pointermove",pointerMove);
+canvas.addEventListener("pointerup",pointerUp);
+canvas.addEventListener("pointercancel",pointerUp);
+canvas.addEventListener("lostpointercapture",pointerUp);
+state.resizeObserver=new ResizeObserver(resizeCanvas);
+state.resizeObserver.observe(frame);
+window.addEventListener("resize",resizeCanvas);
+resizeCanvas();
+
+async function start(){
+  try{
+    const {createClient}=await import("https://esm.sh/@supabase/supabase-js@2");
+    state.clientId=uid();
+    state.client=createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{realtime:{params:{eventsPerSecond:30}}});
+    state.channel=state.client.channel(ROOM,{config:{presence:{key:state.clientId},broadcast:{self:false}}});
+    state.channel
+      .on("presence",{event:"sync"},()=>{
+        const pres=state.channel.presenceState();
+        state.peers=new Set(Object.keys(pres));
+        setPeopleCount();
+      })
+      .on("broadcast",{event:"stroke-start"},({payload})=>handleRemoteStart(payload))
+      .on("broadcast",{event:"stroke-points"},({payload})=>handleRemotePoints(payload))
+      .on("broadcast",{event:"stroke-end"},({payload})=>handleRemoteEnd(payload))
+      .on("broadcast",{event:"stroke-remove"},({payload})=>{
+        if(payload?.owner===state.clientId)return;
+        state.strokes=state.strokes.filter(s=>s.id!==payload?.id);
+        redraw();
+      })
+      .on("broadcast",{event:"board-clear"},()=>{
+        state.strokes=[];state.remoteActive={};state.undoStack=[];redraw();
+      })
+      .on("broadcast",{event:"snapshot-request"},({payload})=>{
+        if(payload?.from!==state.clientId)sendSnapshot();
+      })
+      .on("broadcast",{event:"board-snapshot"},({payload})=>mergeSnapshot(payload))
+      .subscribe(async(status,err)=>{
+        if(status==="SUBSCRIBED"){
+          state.connected=true;setConnection("Đã kết nối",true);hideMessage();
+          await state.channel.track({id:state.clientId,joined_at:new Date().toISOString()});
+          // Ask existing participants for their current board. A short delay lets Presence settle.
+          setTimeout(()=>broadcast("snapshot-request",{from:state.clientId}),700);
+        }else if(["CHANNEL_ERROR","TIMED_OUT","CLOSED"].includes(status)){
+          state.connected=false;setConnection("Lỗi kết nối",false);
+          showMessage("Supabase Realtime: "+status+(err?.message?" — "+err.message:"")+". Kiểm tra URL/key và Realtime.");
+          console.error("Realtime status",status,err||"");
+        }
+      });
+  }catch(err){
+    setConnection("Lỗi khởi tạo",false);
+    showMessage("Không khởi tạo được Supabase: "+(err?.message||String(err)));
+    console.error(err);
+  }
+}
+start();
+</script>
+</body>
+</html>
